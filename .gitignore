@@ -1,0 +1,47 @@
+# Python runtime artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Test/cache artifacts
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.local
+*.local.*
+*.secret.*
+*.secrets.*
+/config/
+/configs/
+/.config/
+/config.*
+/settings.*
+/*.config.*
+/*.settings.*
+!/*.example.*
+!/*.sample.*
+!/*.template.*
+
+# Local tool/agent configuration
+.claude/settings.local.json
+.codex/
+.agents/
+
+# LLM Council run artifacts
+runs/
+llm-council/runs/
+
+# Local ad-hoc run inputs/outputs
+/build_spec.py
+/spec.json
+
+# Logs
+*.log

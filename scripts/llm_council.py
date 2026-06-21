@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import ui_server
 
 RETRY_LIMIT = 2
-DEFAULT_TIMEOUT_SEC = 180
+DEFAULT_TIMEOUT_SEC = 1800
 DEFAULT_UI_KEEPALIVE_SEC = 20 * 60
 DEFAULT_UI_SESSION_TTL_SEC = 30 * 60
 
@@ -214,6 +214,10 @@ def extract_agent_response(config: AgentConfig, raw: str) -> str:
 
 def _build_command_and_input(config: AgentConfig, prompt: str) -> Tuple[List[str], Optional[str]]:
     kind = (config.kind or config.name).lower()
+    # Prompts are delivered via stdin (the second tuple element), not as an
+    # argv argument. On Windows these CLIs are .cmd shims; a multi-line prompt
+    # passed as an argument is mangled by cmd.exe and arrives empty. Each CLI
+    # below reads the prompt from stdin instead.
     if kind == "codex":
         model = config.model or CODEX_MODEL
         reasoning = config.reasoning_effort or CODEX_REASONING
@@ -228,22 +232,14 @@ def _build_command_and_input(config: AgentConfig, prompt: str) -> Tuple[List[str
             f"model_reasoning_effort={reasoning}",
         ]
         args.extend(config.extra_args)
-        args.append(prompt)
-        return (
-            args,
-            None,
-        )
+        return (args, prompt)
     if kind == "gemini":
         model = config.model or GEMINI_MODEL
         args = ["gemini", "--output-format", "json"]
         if model:
             args.extend(["--model", model])
         args.extend(config.extra_args)
-        args.extend(["-p", prompt])
-        return (
-            args,
-            None,
-        )
+        return (args, prompt)
     if kind == "claude":
         model = config.model or CLAUDE_MODEL
         args = [
@@ -261,11 +257,8 @@ def _build_command_and_input(config: AgentConfig, prompt: str) -> Tuple[List[str
             "--disable-slash-commands",
         ]
         args.extend(config.extra_args)
-        args.extend(["-p", prompt])
-        return (
-            args,
-            None,
-        )
+        args.append("-p")
+        return (args, prompt)
     if kind == "opencode":
         args = ["opencode", "run"]
         args.extend(config.extra_args)
@@ -291,9 +284,18 @@ def _build_command_and_input(config: AgentConfig, prompt: str) -> Tuple[List[str
 
 def spawn_cli_agent(config: AgentConfig, prompt: str) -> RunningAgent:
     args, stdin_payload = _build_command_and_input(config, prompt)
+    # On Windows the npm-installed CLIs (claude/codex/gemini) are .cmd/.ps1
+    # shims. CreateProcess only auto-appends .exe, so a bare name like "codex"
+    # raises FileNotFoundError. Resolve via PATH/PATHEXT to launch the shim.
+    if args:
+        resolved = shutil.which(args[0])
+        if resolved:
+            args = [resolved, *args[1:]]
     process = subprocess.Popen(
         args,
-        stdin=subprocess.PIPE if stdin_payload is not None else None,
+        # With no stdin payload, hand the child an empty (EOF) stdin instead of
+        # inheriting ours; otherwise `codex exec` blocks on "reading stdin".
+        stdin=subprocess.PIPE if stdin_payload is not None else subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
