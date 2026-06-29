@@ -61,7 +61,8 @@ class RunningAgent:
 
 
 def load_json(path: str) -> Dict[str, Any]:
-    with open(path, "r", encoding="utf-8") as f:
+    # utf-8-sig tolerates a UTF-8 BOM (e.g. specs written by PowerShell Set-Content -Encoding utf8).
+    with open(path, "r", encoding="utf-8-sig") as f:
         return json.load(f)
 
 
@@ -299,6 +300,11 @@ def spawn_cli_agent(config: AgentConfig, prompt: str) -> RunningAgent:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        # Decode CLI output as UTF-8 regardless of the OS locale. On non-UTF-8
+        # Windows locales (e.g. cp1252/German) the default text mode crashes the
+        # reader thread on bytes like 0x9d that the agents emit (em dashes etc.).
+        encoding="utf-8",
+        errors="replace",
         start_new_session=True,
     )
     if stdin_payload is not None and process.stdin:
